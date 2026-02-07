@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: settlement-engine-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: settlement_engine
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  hardhat:
+    image: node:20-alpine
+    container_name: settlement-engine-hardhat
+    working_dir: /app
+    command: >
+      sh -c "npm install -g hardhat &&
+             mkdir -p /app/hardhat-project &&
+             cd /app/hardhat-project &&
+             npx hardhat node --hostname 0.0.0.0 --port 8545"
+    ports:
+      - "8545:8545"
+    environment:
+      HARDHAT_ACCOUNTS: "0xac0974bec39a17e36ba4a6b4d238ff944bacb476c6b8d6c6712b08d077d5e592,0x70997970c51812e339d9b73b0245ad59c5f2f45e86d8ee7d5cb31cc9e44e9425"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8545"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local

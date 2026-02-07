@@ -1,0 +1,36 @@
+{
+  "name": "self-healing-payment-settlement-engine",
+  "version": "0.1.0",
+  "description": "A self-healing payment settlement engine using Effect-TS v3, ethers.js v6, and Drizzle ORM",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "migrate": "drizzle-kit push",
+    "seed": "tsx src/scripts/seed.ts",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "drizzle-orm": "^0.45.1",
+    "effect": "^3.0.0",
+    "ethers": "^6.0.0",
+    "pg": "^8.11.0",
+    "postgres": "^3.4.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "^3.0.0",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.0",
+    "@types/node": "^20.10.0",
+    "@types/pg": "^8.11.0",
+    "drizzle-kit": "^0.31.8",
+    "hardhat": "^2.19.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
