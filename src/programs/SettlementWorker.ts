@@ -29,8 +29,10 @@ export const settlementWorker = (
 ): Effect.Effect<never, SettlementError> =>
   Effect.gen(function* (_) {
     // Initialize the nonce reference (in-memory tracking)
-    const nonceRef = yield* _(Ref.make<number>(0));
+    const nonceRef = yield* _(Ref.make<number>(-1)); // Start with -1 to indicate uninitialized
 
+    const activeTxIds = yield* _(Ref.make(new Set<string>()));
+    
     // Create a bounded queue for work distribution
     const workQueue = yield* _(Queue.bounded<WorkItem>(100));
 
@@ -39,22 +41,66 @@ export const settlementWorker = (
 
     // Producer: poll DB for PENDING transactions
     const producer = Effect.gen(function* (_) {
+      yield* _(Effect.log("[Producer] Started"));
+
+
       while (true) {
-        const pending = yield* _(storage.getPendingTransactions());
 
         yield* _(
-          Effect.log(`[Producer] Found ${pending.length} pending transactions`)
-        );
+          Effect.gen(function* (_) {
 
-        yield* _(
-          Effect.all(
-            pending.map((txn) => Queue.offer(workQueue, { txn })),
-            { concurrency: "unbounded" }
+          const pending = yield* _(storage.getPendingTransactions());
+
+          // 🛡️ Guard: Ensure pending is actually an array before filtering
+          if (!pending || !Array.isArray(pending)) {
+            return; // Skip this poll cycle if DB returns junk
+          }
+
+          // Filter out transactions that are already in the queue or being processed
+          const newWork = yield* _(
+            Ref.modify(activeTxIds, (currentSet) => {
+              const nextSet = new Set(currentSet);
+              const toAdd = pending.filter((tx) => !nextSet.has(tx.id));
+              
+              // Mark new items as active immediately
+              toAdd.forEach((tx) => nextSet.add(tx.id));
+              
+              return [toAdd, nextSet];
+            })
+          );
+
+          if (newWork.length > 0) {
+            yield* _(
+              Effect.log(`[Producer] Enqueueing ${newWork.length} new transactions`)
+            );
+
+            yield* _(
+              Effect.all(
+                newWork.map((txn) => Queue.offer(workQueue, { txn })),
+                { concurrency: "unbounded" }
+              )
+            );
+          }
+          //hearthbeat log for idle state
+          else {
+             yield* _(Effect.log(`[Producer] Idle... (Next poll in ${config.pollIntervalMs}ms)`));
+          }
+        }).pipe(
+            // 1. Catch expected failures (Effect.fail)
+            Effect.catchAll((error) => 
+              Effect.logError(`[Producer] Polling Failure: ${String(error)}`)
+            ),
+            // 2. Catch unexpected defects (throw new Error, TypeError, etc.)
+            //    This prevents the fiber from dying if the code crashes.
+            Effect.catchAllCause((cause) => 
+              Effect.logError(`[Producer] CRITICAL DEFECT (Recovered): ${cause}`)
+            )
           )
         );
 
-        yield* _(Effect.sleep(Duration.millis(config.pollIntervalMs)));
+          yield* _(Effect.sleep(Duration.millis(config.pollIntervalMs)));
       }
+
     });
 
     // Worker: process transactions from queue with retry logic
@@ -66,6 +112,13 @@ export const settlementWorker = (
           const { txn } = yield* _(Queue.take(workQueue));
 
           yield* _(Effect.log(`[Worker-${workerId}] Processing ${txn.id}`));
+          
+          // Helper to remove ID from active set (run in finally block)
+          const releaseId = Ref.update(activeTxIds, (set) => {
+            const next = new Set(set);
+            next.delete(txn.id);
+            return next;
+          });
 
           // Process transaction with retry schedule for transient errors
           yield* _(
@@ -82,7 +135,8 @@ export const settlementWorker = (
                 Effect.log(
                   `[Worker-${workerId}] Error processing ${txn.id}: ${String(error)}`
                 )
-              )
+              ),
+              Effect.ensuring(releaseId)
             )
           );
         }
@@ -114,6 +168,6 @@ export const settlementWorker = (
       Effect.log(`[Settlement] Worker started with ${workerCount} worker fibers`)
     );
 
-    // FIX 3: Ensure the generator runs forever and matches Effect<never>
+    // Ensure the generator runs forever and matches Effect<never>
     return yield* _(Effect.never);
   });

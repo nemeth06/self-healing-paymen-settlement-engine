@@ -14,6 +14,8 @@ import type { ethers } from "ethers";
 /**
  * Processes a single transaction through the settlement pipeline.
  */
+
+
 export const processTransaction = (
   txn: Transaction,
   nonceRef: Ref.Ref<number>,
@@ -56,6 +58,7 @@ export const processTransaction = (
     const settlementAttempt = Effect.gen(function* (_) {
       // 1. Get Gas Price
       const gasPrice = yield* _(blockchain.getGasPrice());
+      yield* _(Effect.log(`got gas price: ${gasPrice}`));
 
       // 2. Build Object
       const unsignedTx: UnsignedTx = buildUnsignedTx({
@@ -66,18 +69,27 @@ export const processTransaction = (
         nonce,
         gasLimit: txn.gasLimit,
         gasPrice, // This is now correctly a bigint
-        chainId: 31337,
+        chainId: config.rpcId,
       });
+
+      yield* _(Effect.log(`built unsigned tx: ${JSON.stringify(unsignedTx)}`));
 
       // 3. Sign
       const signedTx = yield* _(signTransaction(signer, unsignedTx));
 
+      yield* _(Effect.log(`signed tx: ${signedTx}`));
+
       // 4. Send
       const txHash = yield* _(blockchain.sendRawTx(signedTx));
+      
+      yield* _(Effect.log(`txHash: ${txHash}`));
 
       // 5. Success Updates
       yield* _(storage.updateTransactionStatus(txn.id, "SETTLED", txHash));
       yield* _(Ref.set(nonceRef, nonce + 1));
+
+      yield* _(Effect.log(`Successfully processed transaction: ${signedTx}`));
+
     });
 
     // Execute the attempt with error handling
@@ -85,11 +97,22 @@ export const processTransaction = (
       settlementAttempt.pipe(
         // Map any error from the services to a SettlementError
         // This ensures the next catchAll receives a known type
-        Effect.mapError((error) => ({
-          _tag: "DbError" as const, // Default generic tag for execution failures
-          message: String(error),
-          operation: "processTransaction",
-        })),
+        
+       Effect.mapError((error) => {
+            // If it's already a SettlementError, pass it through
+            if (typeof error === 'object' && error !== null && '_tag' in error) {
+                return error as SettlementError;
+            }
+            
+            // Otherwise, wrap the unknown error (likely from ethers)
+            return {
+                _tag: "DbError", // or "BlockchainError"
+                message: error instanceof Error ? error.message : JSON.stringify(error),
+                operation: "processTransaction"
+            } as SettlementError;
+        }),
+
+        
         // Handle Logic (Retry vs DLQ)
         Effect.catchAll((err: SettlementError) =>
           Effect.gen(function* (_) {

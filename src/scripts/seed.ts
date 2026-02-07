@@ -40,11 +40,11 @@ const seedDatabase = Effect.gen(function* (_) {
   const testTransactions = [
     {
       toAddress: "0x1234567890123456789012345678901234567890",
-      value: "50",
+      value: "1",
       calldata: "0x",
       gasLimit: "21000",
     },
-    {
+    /*{
       toAddress: "0x0987654321098765432109876543210987654321",
       value: "10",
       calldata: "0x",
@@ -55,7 +55,7 @@ const seedDatabase = Effect.gen(function* (_) {
       value: "10",
       calldata: "0x",
       gasLimit: "21000",
-    },
+    },**/
   ];
 
   yield* _(Effect.log(`Seeding database with ${testTransactions.length} test transactions...`));
