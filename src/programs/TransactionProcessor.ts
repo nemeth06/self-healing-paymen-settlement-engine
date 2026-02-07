@@ -38,7 +38,7 @@ export const processTransaction = (
         data: txn.calldata,
         gasLimit: txn.gasLimit,
         nonce: 0,
-        chainId: 31337,
+        chainId: config.rpcId,
       })
     );
 

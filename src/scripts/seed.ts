@@ -40,19 +40,19 @@ const seedDatabase = Effect.gen(function* (_) {
   const testTransactions = [
     {
       toAddress: "0x1234567890123456789012345678901234567890",
-      value: ethers.parseEther("0.1").toString(),
+      value: "50",
       calldata: "0x",
       gasLimit: "21000",
     },
     {
       toAddress: "0x0987654321098765432109876543210987654321",
-      value: ethers.parseEther("0.5").toString(),
+      value: "10",
       calldata: "0x",
       gasLimit: "21000",
     },
     {
       toAddress: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
-      value: ethers.parseEther("1.0").toString(),
+      value: "10",
       calldata: "0x",
       gasLimit: "21000",
     },

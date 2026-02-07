@@ -39,7 +39,7 @@ const main = Effect.scoped(
 
     // Initialize ethers.js provider and signer
     yield* _(Effect.log("[App] Initializing blockchain provider..."));
-    const provider = new ethers.JsonRpcProvider(config.rpcUrl);
+    const provider = new ethers.JsonRpcProvider(config.rpcUrl, ethers.Network.from(config.rpcId));
     const signer = new ethers.Wallet(config.privateKey, provider);
     const signerAddress = yield* _(Effect.promise(() => signer.getAddress()));
 
@@ -64,6 +64,30 @@ const main = Effect.scoped(
     );
     yield* _(Effect.log("[App] Starting settlement worker..."));
     yield* _(Effect.log("[App] ========================================"));
+
+    yield* _(Effect.log("Connecting to Plasma Testnet..."));
+
+  // Fetch Network Info
+  const network = yield* _(
+    Effect.tryPromise({
+      try: () => provider.getNetwork(),
+      catch: (e) => new Error(`Network Error: ${e}`),
+    })
+  );
+
+  // Fetch Block Number
+  const blockNumber = yield* _(
+    Effect.tryPromise({
+      try: () => provider.getBlockNumber(),
+      catch: (e) => new Error(`Block Error: ${e}`),
+    })
+  );
+
+  // Log Results
+  yield* _(
+    Effect.log(`Connected to Chain ID: ${network.chainId} (${network.name})`)
+  );
+  yield* _(Effect.log(`Current Block: ${blockNumber}`));
 
     // Add finalizers for graceful shutdown
     const scope = yield* _(Scope.make());

@@ -4,6 +4,7 @@ import { z } from "zod";
 // Environment configuration schema
 const configSchema = z.object({
   rpcUrl: z.string().url("RPC_URL must be a valid URL"),
+  rpcId: z.number().int().positive("RPC_ID must be a positive integer"),
   privateKey: z
     .string()
     .regex(/^0x[0-9a-fA-F]{64}$/, "PRIVATE_KEY must be a 256-bit hex string"),
@@ -33,6 +34,7 @@ export const loadConfig = (): Effect.Effect<Config, Error> =>
       // Load environment variables (dotenv should be called at app entry point)
       const config = {
         rpcUrl: process.env.RPC_URL,
+        rpcId: parseInt(process.env.RPC_ID || "0", 10),
         privateKey: process.env.PRIVATE_KEY,
         databaseUrl: process.env.DATABASE_URL,
         pollIntervalMs: parseInt(process.env.POLL_INTERVAL_MS || "2000", 10),
@@ -54,6 +56,7 @@ export const loadConfig = (): Effect.Effect<Config, Error> =>
  */
 export interface ConfigService {
   readonly rpcUrl: string;
+  readonly rpcId: number;
   readonly privateKey: string;
   readonly databaseUrl: string;
   readonly pollIntervalMs: number;
@@ -66,6 +69,7 @@ export interface ConfigService {
  */
 export const ConfigService = (config: Config): ConfigService => ({
   rpcUrl: config.rpcUrl,
+  rpcId: config.rpcId,
   privateKey: config.privateKey,
   databaseUrl: config.databaseUrl,
   pollIntervalMs: config.pollIntervalMs,
