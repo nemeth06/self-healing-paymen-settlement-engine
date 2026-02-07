@@ -48,15 +48,13 @@ export const transactions = pgTable(
     // Timestamp when record was last updated
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
-  (table) => ({
-    statusUpdatedAtIndex: index("idx_status_updated_at").on(
-      table.status,
-      table.updatedAt
-    ),
-    retryCountIndex: index("idx_retry_count").on(table.retryCount),
-    hashIndex: index("idx_hash").on(table.hash),
-    pendingIndex: index("idx_pending_txns").on(table.status),
-  })
+  // FIX: Changed from returning an object { key: index(...) } to an array [ index(...) ]
+  (table) => [
+    index("idx_status_updated_at").on(table.status, table.updatedAt),
+    index("idx_retry_count").on(table.retryCount),
+    index("idx_hash").on(table.hash),
+    index("idx_pending_txns").on(table.status),
+  ]
 );
 
 /**
@@ -78,12 +76,11 @@ export const deadLetterQueue = pgTable(
     // Timestamp when moved to DLQ
     enqueuedAt: timestamp("enqueued_at").notNull().defaultNow(),
   },
-  (table) => ({
-    transactionIdIndex: index("idx_dlq_transaction_id").on(
-      table.transactionId
-    ),
-    enqueuedAtIndex: index("idx_dlq_enqueued_at").on(table.enqueuedAt),
-  })
+  // FIX: Changed from returning an object to an array
+  (table) => [
+    index("idx_dlq_transaction_id").on(table.transactionId),
+    index("idx_dlq_enqueued_at").on(table.enqueuedAt),
+  ]
 );
 
 // Types derived from schema
