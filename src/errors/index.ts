@@ -78,7 +78,7 @@ export const parseRpcError = (error: unknown): SettlementError => {
     ) {
       return {
         _tag: "ReplacementFeeTooLow",
-        txHash: (error as any).hash || (error as any).txHash || "unknown",
+        txHash: (error as any).hash || (error as any).txHash || "pending-broadcast",
         currentGasPrice: BigInt(0),
         txGasPrice: BigInt(0),
       };
