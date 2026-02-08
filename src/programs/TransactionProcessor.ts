@@ -2,7 +2,7 @@ import { Effect, Ref } from "effect";
 import type { BlockchainService, UnsignedTx } from "../services/BlockchainService.js";
 import type { StorageService } from "../services/StorageService.js";
 import type { ConfigService } from "../services/ConfigService.js";
-import { isTransient, formatError, SettlementError } from "../errors/index.js";
+import { isTransient, formatError, SettlementError, parseRpcError } from "../errors/index.js";
 import type { Transaction } from "../db/schema.js";
 import {
   buildUnsignedTx,
@@ -94,68 +94,41 @@ export const processTransaction = (
 
     // Execute the attempt with error handling
     yield* _(
-      settlementAttempt.pipe(
-        // Map any error from the services to a SettlementError
-        // This ensures the next catchAll receives a known type
-        
-       Effect.mapError((error) => {
-            // If it's already a SettlementError, pass it through
-            if (typeof error === 'object' && error !== null && '_tag' in error) {
-                return error as SettlementError;
-            }
-            
-            // Otherwise, wrap the unknown error (likely from ethers)
-            return {
-                _tag: "DbError", // or "BlockchainError"
-                message: error instanceof Error ? error.message : JSON.stringify(error),
-                operation: "processTransaction"
-            } as SettlementError;
+    settlementAttempt.pipe(
+        // Use your utility to turn unknown ethers/provider errors 
+        // into your structured SettlementError union
+        Effect.mapError((error) => {
+          if (typeof error === 'object' && error !== null && '_tag' in error) {
+            return error as SettlementError;
+          }
+          return parseRpcError(error); 
         }),
 
-        
-        // Handle Logic (Retry vs DLQ)
         Effect.catchAll((err: SettlementError) =>
           Effect.gen(function* (_) {
             yield* _(storage.recordTransactionError(txn.id, formatError(err)));
 
             if (isTransient(err)) {
+              // Only handle internal state updates for retries here
               if (txn.retryCount < config.maxRetries) {
-                yield* _(
-                  Effect.log(
-                    `Transient error for ${txn.id}: ${formatError(err)}. Retrying (${txn.retryCount + 1}/${config.maxRetries})`
-                  )
-                );
-                yield* _(storage.incrementRetryCount(txn.id));
-
-                if (err._tag === "NonceToLow" && 'currentNonce' in err) {
-                   // Ensure types match for nonce correction
-                   yield* _(Ref.set(nonceRef, (err as any).currentNonce));
+                yield* _(Effect.logWarning(`Transient error: ${formatError(err)}. Retrying...`));
+                
+                if (err._tag === "NonceToLow") {
+                   yield* _(Ref.set(nonceRef, err.currentNonce));
                 }
-
+                
+                yield* _(storage.incrementRetryCount(txn.id));
                 yield* _(storage.updateTransactionStatus(txn.id, "PENDING"));
               } else {
-                yield* _(
-                  storage.moveToDeadLetterQueue(
-                    txn.id,
-                    `Transient error after ${txn.retryCount} retries`,
-                    formatError(err)
-                  )
-                );
-                yield* _(Effect.log(`Transaction moved to DLQ: ${txn.id}`));
+                yield* _(storage.moveToDeadLetterQueue(txn.id, "Max retries exceeded", formatError(err)));
               }
             } else {
-              // Permanent error
-              yield* _(
-                storage.moveToDeadLetterQueue(
-                  txn.id,
-                  "Permanent error",
-                  formatError(err)
-                )
-              );
-              yield* _(Effect.log(`Transaction failed permanently: ${txn.id}`));
+              // PERMANENT: Move to DLQ immediately
+              yield* _(Effect.logError(`Permanent failure: ${formatError(err)}`));
+              yield* _(storage.moveToDeadLetterQueue(txn.id, "Permanent Error", formatError(err)));
+              yield* _(storage.updateTransactionStatus(txn.id, "FAILED"));
             }
 
-            // Fail with the typed error so the parent knows it failed
             return yield* _(Effect.fail(err));
           })
         )

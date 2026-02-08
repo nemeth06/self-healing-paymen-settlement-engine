@@ -222,7 +222,7 @@ const exit = await Effect.runPromiseExit(
     // Verify moveToDeadLetterQueue was called with permanent error message
     expect(mockStorage.moveToDeadLetterQueue).toHaveBeenCalledWith(
       txn.id,
-      "Permanent error",
+      "Permanent Error",
       expect.stringContaining("Execution reverted")
     );
 
@@ -264,7 +264,7 @@ const exit = await Effect.runPromiseExit(
     // Verify moveToDeadLetterQueue was called (max retries exceeded)
     expect(mockStorage.moveToDeadLetterQueue).toHaveBeenCalledWith(
       txn.id,
-      `Transient error after 3 retries`,
+      `Max retries exceeded`,
       expect.stringContaining("Network")
     );
 
@@ -342,7 +342,7 @@ const exit = await Effect.runPromiseExit(
     // Verify moveToDeadLetterQueue was called (permanent)
     expect(mockStorage.moveToDeadLetterQueue).toHaveBeenCalledWith(
       txn.id,
-      "Permanent error",
+      "Permanent Error",
       expect.stringContaining("Insufficient")
     );
 

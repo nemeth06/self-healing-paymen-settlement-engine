@@ -123,17 +123,17 @@ export const settlementWorker = (
           // Process transaction with retry schedule for transient errors
           yield* _(
             processTransaction(txn, nonceRef, signer, blockchain, storage, config).pipe(
-              // FIX 2: Correct Retry Schedule API
-              // Intersect 'exponential' (delay) with 'recurs' (limit count)
+              // Modify retry to only trigger IF the error is transient
               Effect.retry(
                 Schedule.exponential(Duration.millis(100)).pipe(
-                  Schedule.intersect(Schedule.recurs(2))
+                  Schedule.intersect(Schedule.recurs(2)),
+                  // 🛡️ ONLY retry if our logic says it's transient
+                  Schedule.whileInput((err: SettlementError) => isTransient(err))
                 )
               ),
-              // Swallow errors to keep worker alive
               Effect.catchAll((error) =>
-                Effect.log(
-                  `[Worker-${workerId}] Error processing ${txn.id}: ${String(error)}`
+                Effect.logError(
+                  `[Worker-${workerId}] Terminated processing ${txn.id}: ${formatError(error)}`
                 )
               ),
               Effect.ensuring(releaseId)

@@ -394,7 +394,7 @@ describe("SettlementWorker", () => {
 
     expect(mockStorage.moveToDeadLetterQueue).toHaveBeenCalledWith(
       tx1.id,
-      "Permanent error",
+      "Permanent Error",
       expect.stringContaining("Execution reverted")
     );
 
