@@ -7,12 +7,12 @@ import { processTransaction } from "./TransactionProcessor.js";
 
 import type { Transaction } from "../db/schema.js";
 
-// Placeholder for the error type based on your spec
-// If you have a specific file for this, import it instead.
-export interface SettlementError {
-  _tag: "SettlementError";
-  message: string;
-}
+import { 
+  type SettlementError, 
+  parseRpcError, 
+  isTransient, 
+  formatError 
+} from "../errors/index.js";
 
 /**
  * Work item in the settlement queue

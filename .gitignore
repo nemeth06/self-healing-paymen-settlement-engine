@@ -38,3 +38,5 @@ yarn-error.log*
 
 #coverage
 coverage/
+
+more_md_docs/

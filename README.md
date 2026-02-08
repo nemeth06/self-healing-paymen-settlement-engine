@@ -1,135 +1,215 @@
-# Self-Healing Payment Settlement Engine
+## What Problem Does This Solve?
 
-A blockchain payment settlement system built with Effect-TS v3, ethers.js v6, and Drizzle ORM.
+A blockchain payment settlement system needs to handle:
+- **Nonce issues**: Multiple transactions from same wallet can conflict
+- **Gas spikes**: Network conditions change, gas price might need bumping
+- **Network flakes**: RPC calls can temporarily fail
+- **Bad inputs**: Some transactions will never succeed (bad address, insufficient funds)
 
-## Quick Start
+This system handles all of these automatically without manual intervention.
 
-### Prerequisites
+
+## Quickstart
+
+Prerequisites
 - Node.js 20+
 - Docker Compose
 
-### Setup
+Make sure to set your private key in the .env file.
+
 ```bash
-# Install dependencies
 npm install
-
-# Start services (Postgres + Hardhat)
 npm run docker:up
-
-# Wait ~10 seconds for services to be healthy
-
-# Create database schema
 npm run migrate
-
-# Seed test transactions
 npm run seed
-
-# Start settlement worker
 npm run dev
 ```
 
-The worker will poll for PENDING transactions and settle them with automatic retry logic for transient errors.
-
-## Key Features
-
-- **Effect-TS v3**: All side effects (RPC, DB, time, concurrency) as composable Effects
-- **Self-Healing**: Automatic recovery from "Nonce too low" and "Replacement fee too low" errors
-- **Producer-Consumer**: Queue-based worker pattern with supervised fibers
-- **Discriminated Errors**: Smart routing of transient vs permanent failures
-- **Dead-Letter Queue**: Failed transactions moved to DLQ table for inspection
-
-## Project Structure
-
-```
-src/
-├── main.ts                 # App entry, resource management
-├── services/               # BlockchainService, StorageService, ConfigService
-├── programs/               # SettlementWorker, TransactionProcessor
-├── errors/                 # SettlementError types & helpers
-├── db/                     # Drizzle schema, client
-├── utils/                  # Gas utilities, tx building
-└── scripts/                # Seed data script
+ In another terminal (check results)
+```bash
+psql postgresql://postgres:postgres@localhost:5432/settlement_engine
+SELECT * FROM transactions;
+SELECT * FROM dead_letter_queue;
 ```
 
-## Database
-
-### transactions
-- `id` (UUID PK): Transaction identifier
-- `status` (enum): PENDING | PROCESSING | SETTLED | FAILED
-- `hash` (varchar): On-chain transaction hash
-- `toAddress`, `value`, `calldata`, `gasLimit`, `retryCount`
-- `createdAt`, `updatedAt`
-
-### dead_letter_queue
-- `id` (UUID PK): DLQ entry
-- `transactionId` (FK): Reference to transactions
-- `reason`, `errorDetails`, `enqueuedAt`
-
-## Environment
-
-```env
-RPC_URL=http://localhost:8545
-PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb476c6b8d6c6712b08d077d5e592
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/settlement_engine
-POLL_INTERVAL_MS=2000
-MAX_RETRIES=5
+Stop everything
+```bash
+npm run docker:down
 ```
-
-## What It Does
-
-1. **Polling**: Producer checks DB every 2 seconds for PENDING transactions
-2. **Processing**: Worker processes transactions via RPC (sign → broadcast → confirm)
-3. **Recovery**: 
-   - Nonce too low → updates Ref, retries
-   - Replacement fee too low → bumps gas, retries
-   - Network error → exponential backoff retry
-   - Permanent error → moves to dead-letter queue
 
 ## Testing
 
+Run tests
+
 ```bash
-# Check transactions
-psql postgresql://postgres:postgres@localhost:5432/settlement_engine
-SELECT id, status, hash, retry_count FROM transactions ORDER BY createdAt DESC;
-
-# Check dead-letter queue
-SELECT * FROM dead_letter_queue;
-
-# View logs
-npm run dev 2>&1 | tee settlement.log
+npm test
 ```
 
-## Architecture Details
+Generate coverage report
 
-See [EFFECTS.md](EFFECTS.md) for detailed effect system documentation covering:
-- **I/O Boundary**: Network, storage, time, concurrency, logging effects
-- **Effect Definitions**: Code references for all services and error types
-- **Pure Core**: Deterministic settlement logic and recovery paths
-- **Runtime**: Effect-TS v3 execution model and resource management
-
-## Deployment
-
-For hackathon:
-- Run locally via `npm run dev`
-- Services run in Docker (postgres + hardhat)
-- Single worker with 2 concurrent fibers
-- Add monitoring/alerts as needed
-
-## Troubleshooting
-
-**Transactions stuck in PENDING**
-```sql
-UPDATE transactions SET status='PROCESSING' WHERE status='PENDING';
+```bash
+npm run test:coverage
 ```
 
-**Check nonce mismatch**
-- Worker logs show nonce updates via Effect.log
-- DB stores last error in `lastError` column
 
-**Reset database**
-```bash
-npm run docker:down
-npm run docker:up
-npm run migrate
-npm run seed
+## How It Works
+
+### The Loop
+```
+Every 2 seconds:
+  1. Check DB for transactions waiting to be sent ("PENDING")
+  2. For each transaction:
+     - Build it (construct the data)
+     - Sign it (private key)
+     - Send it to blockchain via RPC
+     - Wait for confirmation
+  3. If success -> mark as "SETTLED"
+  4. If fails with temporary issue -> retry automatically
+  5. If fails with permanent issue -> move to "dead-letter queue"
+```
+
+### Temporary Issues (Auto-Retry)
+- Nonce too low -> Update nonce, retry
+- Replacement fee too low -> Bump gas price, retry
+- Network timeouts -> Exponential backoff, retry
+
+### Permanent Issues (Give Up)
+- Bad recipient address -> Move to dead-letter
+- Insufficient balance -> Move to dead-letter
+- Transaction would revert -> Move to dead-letter
+
+## Tech Stack
+
+| Component | Purpose |
+|-----------|---------|
+| **Effect-TS v3** | Makes all side effects (DB, RPC, time) composable and testable |
+| **ethers.js v6** | Talk to blockchain (Hardhat) |
+| **Drizzle ORM** | Access Postgres database |
+| **Postgres** | Store transaction status, errors, dead-letters |
+| **Hardhat** | Local blockchain for testing |
+
+## Data Model
+
+### transactions table
+```
+id          -> Unique identifier (UUID)
+hash        -> Blockchain tx hash (null until sent)
+status      -> PENDING | PROCESSING | SETTLED | FAILED
+to_address  -> Where to send the funds
+value       -> How much (in wei)
+calldata    -> What to do (0x for simple transfer)
+gas_limit   -> How much gas
+retry_count -> How many times we tried
+last_error  -> Most recent error message
+created_at  -> When inserted
+updated_at  -> Last change
+```
+
+### dead_letter_queue table
+```
+id              -> Unique identifier
+transaction_id  -> Reference to transactions table
+reason          -> Why we gave up
+error_details   -> Full error message
+enqueued_at     -> When moved to DLQ
+```
+
+## File Organization
+
+```
+src/
+├── main.ts                    <- Start here: app entry point
+├── services/                  <- Wrapped API calls
+│   ├── ConfigService          <- Load environment variables
+│   ├── BlockchainService      <- Wrap ethers.js (RPC calls)
+│   └── StorageService         <- Wrap Drizzle (DB queries)
+├── programs/                  <- Core settlement logic
+│   ├── SettlementWorker       <- Main loop + producer/workers
+│   └── TransactionProcessor   <- Process one transaction
+├── errors/                    <- Error types
+├── db/                        <- Database schema
+├── utils/                     <- Helpers (gas calc, tx building)
+└── scripts/                   <- Setup scripts
+```
+
+
+## Why Effect-TS?
+
+Instead of:
+```typescript
+async function processTransaction(txn) {
+  try {
+    const nonce = await getNonce();
+    const signed = await signTx();
+    const hash = await sendTx();
+    return { success: true, hash };
+  } catch (error) {
+    // Where do I handle different errors?
+    // How do I know which errors are recoverable?
+  }
+}
+```
+
+We use **Effect** (generators) to compose effects:
+```typescript
+Effect.gen(function* (_) {
+  const nonce = yield* _(blockchain.getNonce()); // Wrapped effect
+  const signed = yield* _(signTransaction());    // Wrapped effect
+  const hash = yield* _(blockchain.sendRawTx()); // Wrapped effect
+  
+  // Errors automatically have type information
+  if (isTransient(error)) {
+    yield* _(update status back to PENDING);
+  } else {
+    yield* _(moveToDeadLetterQueue());
+  }
+})
+```
+
+Benefits:
+- All side effects are explicit and typed
+- Errors are discriminated (transient vs permanent)
+- Resource cleanup is automatic (DB, provider)
+- Retry logic is built-in (Schedule)
+- Concurrent execution is safe (Ref, Queue, Supervisor)
+
+## Self-Healing Examples
+
+### Example 1: Nonce Conflict
+```
+Worker 1 sends tx with nonce 5 << Success
+Worker 2 sends tx with nonce 5 Error: "nonce too low"
+  -> RPC gives us: current nonce is 6
+  -> We update in-memory Ref to 6
+  -> Worker 2 retries with nonce 6 Success
+```
+
+### Example 2: Gas Price Spike
+```
+Gas price was 20 gwei, we built tx with that price
+Network now requires 30 gwei
+RPC rejects: "replacement fee too low"
+  -> We fetch current gas price (30 gwei)
+  -> Multiply by 1.2x for bump = 36 gwei
+  -> Rebuild tx with new gas price
+  -> Retry Success
+```
+
+### Example 3: Network Timeout
+```
+First attempt: timeout connecting to RPC
+  -> Error is NetworkError (transient)
+  -> Retry with 100ms delay
+Second attempt: timeout again
+  -> Retry with 200ms delay
+Third attempt: Success
+```
+
+### Example 4: Bad Address
+```
+Tx has recipient "0xbadbadbad..."
+RPC validates and rejects: "invalid address"
+  -> Error is ValidationError (permanent)
+  -> Don't retry, move to dead-letter queue
+  -> Human reviews in DB
 ```
