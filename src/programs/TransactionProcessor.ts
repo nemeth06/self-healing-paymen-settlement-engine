@@ -68,7 +68,7 @@ export const processTransaction = (
         calldata: txn.calldata,
         nonce,
         gasLimit: txn.gasLimit,
-        gasPrice, // This is now correctly a bigint
+        gasPrice,
         chainId: config.rpcId,
       });
 
