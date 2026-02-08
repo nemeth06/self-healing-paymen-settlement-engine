@@ -1,0 +1,17 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background (optional, remove if you want transparent) -->
+  <rect width="200" height="200" fill="white"/>
+
+  <!-- Minimal geometric logo -->
+  <!-- Outer circle -->
+  <circle cx="100" cy="100" r="70" fill="none" stroke="black" stroke-width="6"/>
+
+  <!-- Inner element: abstract "focus / precision" mark -->
+  <circle cx="100" cy="100" r="10" fill="black"/>
+
+  <!-- Clean cross lines (math/tech feel) -->
+  <line x1="100" y1="30" x2="100" y2="70" stroke="black" stroke-width="6" stroke-linecap="round"/>
+  <line x1="100" y1="130" x2="100" y2="170" stroke="black" stroke-width="6" stroke-linecap="round"/>
+  <line x1="30" y1="100" x2="70" y2="100" stroke="black" stroke-width="6" stroke-linecap="round"/>
+  <line x1="130" y1="100" x2="170" y2="100" stroke="black" stroke-width="6" stroke-linecap="round"/>
+</svg>
