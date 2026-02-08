@@ -1,6 +1,9 @@
 # QUICKSTART
 
 ## 1-2-3-4 Setup
+
+Make sure to set your private key in the .env file.
+
 ```bash
 npm install
 npm run docker:up
@@ -70,7 +73,7 @@ VALUES (gen_random_uuid(), 'not-an-address', '100000000000000000', '0x', '21000'
 ## Env Variables (in .env)
 
 - `RPC_URL` - Hardhat endpoint
-- `PRIVATE_KEY` - Signer wallet (has ETH on Hardhat)
+- `PRIVATE_KEY` - Signer wallet
 - `DATABASE_URL` - Postgres
 - `POLL_INTERVAL_MS` - How often to check DB (2000 = 2s)
 - `MAX_RETRIES` - Max attempts per transaction (5)
@@ -82,25 +85,6 @@ VALUES (gen_random_uuid(), 'not-an-address', '100000000000000000', '0x', '21000'
 - **Queue**: Work queue between producer/workers
 - **Schedule**: Retry logic with exponential backoff
 - **Scope**: Resource lifecycle (DB, provider cleanup)
-
-## Common Issues
-
-**"Nonce too low"**
-- Worker automatically updates in-memory Ref and retries
-- Check logs for "Updating nonce"
-
-**"Replacement fee too low"**
-- Worker retries with bumped gas price
-- Automatic, no manual intervention needed
-
-**Transactions stuck in PROCESSING**
-- Kill worker, manually update: `UPDATE transactions SET status='PENDING' WHERE status='PROCESSING'`
-- Restart worker
-
-**DB won't connect**
-- Check Docker: `docker ps | grep postgres`
-- Logs: `docker logs settlement-engine-db`
-- Restart: `npm run docker:down && npm run docker:up`
 
 ---
 
